@@ -1,0 +1,1418 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>Cyber Explorer — Learn to Code with Bolt the Robot</title>
+<meta name="description" content="A playful coding game for kids ages 7-12: sequencing, loops, conditions and real code, taught through robot adventures."/>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🤖</text></svg>"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          display: ['Fredoka', 'ui-rounded', 'sans-serif'],
+          nunito: ['Nunito', 'sans-serif'],
+        },
+        screens: { xs: '420px' },
+      }
+    }
+  }
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.umd.js"></script>
+<style>
+html, body { height: 100%; }
+body { background: #0b1120; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+@keyframes bump {
+  0% { transform: translateX(0); }
+  25% { transform: translateX(-6px) rotate(-4deg); }
+  50% { transform: translateX(5px) rotate(3deg); }
+  75% { transform: translateX(-3px); }
+  100% { transform: translateX(0); }
+}
+.animate-bump { animation: bump 0.4s ease; }
+
+@keyframes burn {
+  0%, 100% { filter: none; }
+  50% { filter: drop-shadow(0 0 6px #f97316) brightness(1.3); }
+}
+.animate-burn { animation: burn 0.5s ease 2; }
+
+@keyframes pop { 0% { transform: scale(0.6); opacity: 0; } 60% { transform: scale(1.15); } 100% { transform: scale(1); opacity: 1; } }
+.animate-pop { animation: pop 0.35s ease; }
+
+@keyframes toastIn { 0% { transform: translate(-50%, -18px); opacity: 0; } 100% { transform: translate(-50%, 0); opacity: 1; } }
+.animate-toast-in { animation: toastIn 0.35s cubic-bezier(.34,1.56,.64,1); }
+
+@keyframes fadeIn { 0% { opacity: 0; transform: translateY(4px); } 100% { opacity: 1; transform: translateY(0); } }
+.animate-fade-in { animation: fadeIn 0.25s ease; }
+
+@keyframes bounceSlow { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+.animate-bounce-slow { animation: bounceSlow 1.8s ease-in-out infinite; }
+
+@keyframes pulseFast { 0%, 100% { box-shadow: 0 0 0 0 rgba(34,211,238,0.55); } 50% { box-shadow: 0 0 0 4px rgba(34,211,238,0.15); } }
+.animate-pulse-fast { animation: pulseFast 0.5s ease-in-out infinite; }
+
+@keyframes shakeGood { 0%,100% { transform: scale(1); } 50% { transform: scale(0.92) rotate(-3deg); } }
+.animate-shake-good { animation: shakeGood 0.4s ease; }
+@keyframes shakeBad { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-8px) rotate(-3deg); } 75% { transform: translateX(8px) rotate(3deg); } }
+.animate-shake-bad { animation: shakeBad 0.4s ease; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+
+:focus-visible { outline: 2px solid #22d3ee; outline-offset: 2px; }
+
+</style>
+</head>
+<body class="font-nunito">
+<div id="root"></div>
+<script>
+/* ============================================================
+   CORE: level data + pure game engine (no React in here)
+   ============================================================ */
+const CELL = 64;
+const DIRS = [
+  { n: 'up', dx: 0, dy: -1 },
+  { n: 'right', dx: 1, dy: 0 },
+  { n: 'down', dx: 0, dy: 1 },
+  { n: 'left', dx: -1, dy: 0 },
+];
+const DIRIDX = { up: 0, right: 1, down: 2, left: 3 };
+
+const BLOCK_DEFS = {
+  up:     { label: 'Up',         icon: '⬆️', cat: 'move', code: 'moveUp();' },
+  down:   { label: 'Down',       icon: '⬇️', cat: 'move', code: 'moveDown();' },
+  left:   { label: 'Left',       icon: '⬅️', cat: 'move', code: 'moveLeft();' },
+  right:  { label: 'Right',      icon: '➡️', cat: 'move', code: 'moveRight();' },
+  action: { label: 'Grab',       icon: '🤚', cat: 'act',  code: 'grab();' },
+  walk:   { label: 'Walk',       icon: '👣', cat: 'move', code: 'walk();' },
+  jump:   { label: 'Jump',       icon: '🦘', cat: 'move', code: 'jump();' },
+  turnR:  { label: 'Turn Right', icon: '↪️', cat: 'move', code: 'turnRight();' },
+  turnL:  { label: 'Turn Left',  icon: '↩️', cat: 'move', code: 'turnLeft();' },
+  repeat: { label: 'Repeat',     icon: '🔁', cat: 'loop', container: true },
+  until:  { label: 'Repeat until ⭐', icon: '🎯', cat: 'loop', container: true },
+  if:     { label: 'If',         icon: '🔀', cat: 'cond', container: true },
+};
+const CONDS = {
+  red:  { label: 'tile ahead is Red', icon: '🟥', code: 'tileAheadIsRed()' },
+  wall: { label: 'wall ahead',        icon: '🧱', code: 'wallAhead()' },
+};
+
+const SECTIONS = [
+  { n: 1, name: 'Beginner',     sub: 'Sequencing & order',       zone: 'Circuit Meadow', color: '#14B8A6', emoji: '🌱' },
+  { n: 2, name: 'Intermediate', sub: 'Loops & conditions',       zone: 'Loop Canyon',    color: '#F59E0B', emoji: '🏜️' },
+  { n: 3, name: 'Advanced',     sub: 'Real code & algorithms',   zone: 'Code Castle',    color: '#8B5CF6', emoji: '🏰' },
+];
+
+const LEVELS = [
+  {
+    id: '1.1', section: 1, title: 'Direct Path', concept: 'Put steps in order', kind: 'blocks', credits: 10,
+    story: 'Bolt wants the star! Drag blocks into the queue so Bolt walks there, one step after another.',
+    grid: ['.....', '.#G#.', 'S....'], startDir: 1,
+    palette: ['up', 'down', 'left', 'right'], conds: [], limit: 8, stars: [3, 5],
+    hint: 'Bolt starts at the bottom-left. Go RIGHT two times, then UP one time.',
+  },
+  {
+    id: '1.2', section: 1, title: 'Obstacle Turn', concept: 'Walls make you turn', kind: 'blocks', credits: 10,
+    story: 'Walls are in the way! Find the gap and plan your turns before you press Run.',
+    grid: ['S..#..', '##.#..', '#...G.'], startDir: 1,
+    palette: ['up', 'down', 'left', 'right'], conds: [], limit: 10, stars: [6, 8],
+    hint: 'Right, Right to the gap. Then Down, Down. Then Right, Right to the star.',
+  },
+  {
+    id: '1.3', section: 1, title: 'The Classic Maze', concept: 'Keys, doors and dead ends', kind: 'blocks', credits: 10,
+    story: 'The exit is behind a locked door 🔒. Find the key 🔑, use Grab to pick it up, then go through the door!',
+    grid: ['S..#...', '##.#.#.', '.....#.', '.###K##', '.....DG'], startDir: 1,
+    palette: ['up', 'down', 'left', 'right', 'action'], conds: [], limit: 18, stars: [11, 14],
+    hint: 'The key is in the little nook in the middle. Stand on it and use Grab, then head down and right through the door.',
+  },
+  {
+    id: '2.1', section: 2, title: 'The Repeat Loop', concept: 'Loops repeat things', kind: 'blocks', credits: 10,
+    story: 'That is a long, long path! You only have 3 blocks, so let a Repeat block do the hard work.',
+    grid: ['##########', 'S........G', '##########'], startDir: 1,
+    palette: ['walk', 'repeat'], conds: [], limit: 3, stars: [2, 3],
+    hint: 'Count the tiles between Bolt and the star: it is 9 steps. Put one Walk inside Repeat 9.',
+  },
+  {
+    id: '2.2', section: 2, title: 'Conditional Junctions', concept: 'If this, do that', kind: 'blocks', credits: 10,
+    story: 'Red tiles are hot 🔥! Teach Bolt to decide: IF the tile ahead is red, Jump. ELSE, Walk.',
+    grid: ['##########', 'S.R..R.R.G', '##########'], startDir: 1,
+    palette: ['walk', 'jump', 'repeat', 'if'], conds: ['red', 'wall'], limit: 5, stars: [4, 5],
+    hint: 'Repeat 6 times: If "tile ahead is Red" then Jump, else Walk. Put the If inside the Repeat.',
+  },
+  {
+    id: '2.3', section: 2, title: 'Nested Logic Combo', concept: 'Loops with decisions inside', kind: 'blocks', credits: 10,
+    story: 'A twisty path with no map! Keep going until you reach the star, and turn whenever a wall is ahead.',
+    grid: ['S....', '####.', '..G#.', '.###.', '.....'], startDir: 1,
+    palette: ['walk', 'turnR', 'turnL', 'repeat', 'until', 'if'], conds: ['wall', 'red'], limit: 7, stars: [4, 6],
+    hint: 'Repeat until ⭐: If "wall ahead" then Turn Right, else Walk. This path only ever turns right!',
+  },
+  {
+    id: '3.1', section: 3, title: 'Syntax Repair', concept: 'Fix broken code', kind: 'syntax', credits: 15,
+    story: 'The bridge over Glitch River is broken! Fill in the missing code so Bolt can cross.',
+    code: [
+      [{ cm: '// Fix the bridge, then send Bolt across!' }],
+      [{ t: 'const bridge = new Bridge();' }],
+      [{ t: 'bridge.setHeight(' }, { b: 0 }, { t: ');' }, { cm: '   // the river is 10 tall' }],
+      [{ t: 'player.' }, { b: 1 }, { t: ' = 5;' }, { cm: '   // how fast Bolt runs' }],
+      [{ t: 'bridge.' }, { b: 2 }, { t: '();' }, { cm: '   // make the planks appear' }],
+    ],
+    blanks: [
+      { ans: '10', opts: ['10', '5', 'ten'], w: 3, line: 3, hint: 'The river is 10 tall, so the bridge height should be the number 10.' },
+      { ans: 'speed', opts: ['speed', 'color', 'name', 'jump'], w: 6, line: 4, hint: 'The comment says how fast Bolt runs. Which property holds that?' },
+      { ans: 'build', opts: ['build', 'delete', 'sleep', 'paint'], w: 6, line: 5, hint: 'You want the planks to appear. Which action builds something?' },
+    ],
+    chips: ['speed', '10', 'build', 'color', '5', 'delete', 'name', 'ten', 'jump', 'sleep', 'paint'],
+  },
+  {
+    id: '3.2', section: 3, title: 'Algorithm Boss Fight', concept: 'Plan a 4-step algorithm', kind: 'boss', credits: 15,
+    story: 'Glitch-Bot attacks in the same pattern every time. Scan it, then write 4 steps of code that beat every attack!',
+    pattern: ['laser', 'stomp', 'spin', 'stomp'],
+    counters: { laser: 'duck', stomp: 'jump', spin: 'shield' },
+    attacks: {
+      laser: { name: 'Laser Beam',  icon: '🔴', tell: 'A beam flies HIGH across the arena.',   hint: 'The beam flies high. Which move gets Bolt low, under it?' },
+      stomp: { name: 'Ground Stomp', icon: '🦶', tell: 'The GROUND shakes and cracks.',         hint: 'The shockwave rolls along the ground. Which move gets Bolt off the floor?' },
+      spin:  { name: 'Spin Slash',  icon: '🌀', tell: 'Blades swirl AROUND Bolt.',              hint: 'Blades come from every side. Which move protects Bolt all around?' },
+    },
+    chips: ['jump', 'duck', 'shield', 'punch', 'dance'],
+  },
+  {
+    id: '3.3', section: 3, title: 'The Cyber Quiz', concept: 'Spot loops and bugs', kind: 'quiz', credits: 10,
+    story: 'Three fast questions, 20 seconds each. Get 2 right to pass. Read the code carefully!',
+    time: 20,
+    questions: [
+      {
+        type: 'choice', prompt: '5 coins sit in a row. Which loop collects ALL of them?', visual: '🪙 🪙 🪙 🪙 🪙',
+        options: [
+          'for (let i = 0; i < 5; i++) {\n  collectCoin();\n}',
+          'for (let i = 0; i < 5; i++) {\n  jump();\n}',
+          'if (coinAhead) {\n  collectCoin();\n}',
+        ],
+        code: true, answer: 0,
+        explain: 'The first loop runs collectCoin() five times, once per coin. The second only jumps, and an if runs just once.',
+      },
+      {
+        type: 'lines', prompt: 'Bolt should go right, right, down, then grab the key. Tap the line with the bug!',
+        lines: ['robot.moveRight();', 'robot.moveRight();', 'robot.moveDwon();', 'robot.grabKey();'],
+        answer: 2,
+        explain: 'Line 3 has a typo: moveDwon() should be moveDown(). Computers need every letter exactly right.',
+      },
+      {
+        type: 'choice', prompt: 'How many coins does Bolt have when the code finishes?',
+        snippet: 'let coins = 0;\nrepeat (3) {\n  coins = coins + 2;\n}',
+        options: ['3', '5', '6', '8'], code: false, answer: 2,
+        explain: 'The loop adds 2 three times: 2 + 2 + 2 = 6.',
+      },
+    ],
+  },
+];
+const TOTAL_CREDITS = LEVELS.reduce((a, l) => a + l.credits, 0); // 100
+
+/* ---------- achievements ---------- */
+const ACHS = [
+  { id: 'first_steps',     name: 'First Steps',     icon: '👣', color: '#14B8A6', desc: 'Complete Level 1.1',                                     test: d => !!d['1.1'] },
+  { id: 'maze_master',     name: 'Maze Master',     icon: '🧩', color: '#3B82F6', desc: 'Solve the Section 1 maze',                                test: d => !!d['1.3'] },
+  { id: 'loop_specialist', name: 'Loop Specialist', icon: '🔁', color: '#F59E0B', desc: 'Finish Section 2 without breaking the block limit',      test: d => ['2.1', '2.2', '2.3'].every(k => d[k]) },
+  { id: 'bug_hunter',      name: 'Bug Hunter',      icon: '🐞', color: '#EF4444', desc: 'Fix the broken code in Section 3',                        test: d => !!d['3.1'] },
+  { id: 'boss_buster',     name: 'Boss Buster',     icon: '🤖', color: '#8B5CF6', desc: 'Defeat Glitch-Bot with your algorithm',                   test: d => !!d['3.2'] },
+  { id: 'star_collector',  name: 'Star Collector',  icon: '⭐', color: '#EAB308', desc: 'Earn 3 stars on any level',                               test: d => Object.values(d).some(x => x.stars === 3) },
+  { id: 'master_hacker',   name: 'Master Hacker',   icon: '👑', color: '#EC4899', desc: 'Earn all 100 credits',                                    test: d => getCredits(d) === TOTAL_CREDITS },
+];
+function getCredits(done) { return LEVELS.reduce((a, l) => a + (done[l.id] ? l.credits : 0), 0); }
+function evalAch(done) { const o = {}; ACHS.forEach(a => { if (a.test(done)) o[a.id] = true; }); return o; }
+
+/* ---------- program tree helpers ---------- */
+let _uid = 0;
+const uid = () => 'b' + (++_uid);
+const SLOTS = ['body', 'then', 'else'];
+
+function mk(type, level) {
+  const n = { id: uid(), t: type };
+  if (type === 'repeat') { n.n = 3; n.body = []; }
+  if (type === 'until') { n.body = []; }
+  if (type === 'if') { n.cond = (level.conds && level.conds[0]) || 'wall'; n.then = []; n.else = []; }
+  return n;
+}
+function countBlocks(nodes) {
+  let c = 0;
+  for (const n of nodes) { c++; for (const s of SLOTS) if (n[s]) c += countBlocks(n[s]); }
+  return c;
+}
+function updateSlot(nodes, key, fn) {
+  if (key === 'root') return fn(nodes);
+  return nodes.map(n => {
+    const m = { ...n };
+    for (const s of SLOTS) if (n[s]) m[s] = key === n.id + ':' + s ? fn(n[s]) : updateSlot(n[s], key, fn);
+    return m;
+  });
+}
+function updateNode(nodes, id, fn) {
+  return nodes.map(n => {
+    if (n.id === id) return fn(n);
+    const m = { ...n };
+    for (const s of SLOTS) if (n[s]) m[s] = updateNode(n[s], id, fn);
+    return m;
+  });
+}
+function removeNode(nodes, id) {
+  let removed = null;
+  const rec = list => {
+    const out = [];
+    for (const n of list) {
+      if (n.id === id) { removed = n; continue; }
+      const m = { ...n };
+      for (const s of SLOTS) if (n[s]) m[s] = rec(n[s]);
+      out.push(m);
+    }
+    return out;
+  };
+  const tree = rec(nodes);
+  return [tree, removed];
+}
+function subtreeIds(n) {
+  let ids = [n.id];
+  for (const s of SLOTS) if (n[s]) n[s].forEach(c => { ids = ids.concat(subtreeIds(c)); });
+  return ids;
+}
+function slotExists(nodes, key) {
+  if (key === 'root') return true;
+  for (const n of nodes) for (const s of SLOTS) if (n[s]) {
+    if (key === n.id + ':' + s) return true;
+    if (slotExists(n[s], key)) return true;
+  }
+  return false;
+}
+function insertBefore(list, beforeId, node) {
+  const arr = list.slice();
+  let idx = beforeId ? arr.findIndex(n => n.id === beforeId) : arr.length;
+  if (idx < 0) idx = arr.length;
+  arr.splice(idx, 0, node);
+  return arr;
+}
+function toCode(nodes, ind = 0) {
+  const pad = '  '.repeat(ind);
+  let out = '';
+  for (const n of nodes) {
+    if (n.t === 'repeat') out += `${pad}repeat (${n.n}) {\n${toCode(n.body, ind + 1)}${pad}}\n`;
+    else if (n.t === 'until') out += `${pad}while (!atGoal()) {\n${toCode(n.body, ind + 1)}${pad}}\n`;
+    else if (n.t === 'if') out += `${pad}if (${CONDS[n.cond].code}) {\n${toCode(n.then, ind + 1)}${pad}} else {\n${toCode(n.else, ind + 1)}${pad}}\n`;
+    else out += pad + BLOCK_DEFS[n.t].code + '\n';
+  }
+  return out;
+}
+
+/* ---------- engine ---------- */
+function rawCell(level, x, y) {
+  const rows = level.grid;
+  if (y < 0 || y >= rows.length || x < 0 || x >= rows[0].length) return '#';
+  return rows[y][x];
+}
+function effCell(level, st, x, y) {
+  const c = rawCell(level, x, y);
+  const k = x + ',' + y;
+  if (c === 'S') return '.';
+  if (c === 'K' && st.taken.includes(k)) return '.';
+  if (c === 'D' && st.opened.includes(k)) return '.';
+  return c;
+}
+function findCell(level, ch) {
+  let p = null;
+  level.grid.forEach((r, y) => { for (let x = 0; x < r.length; x++) if (r[x] === ch) p = { x, y }; });
+  return p;
+}
+function initState(level) {
+  const s = findCell(level, 'S');
+  return { x: s.x, y: s.y, dir: level.startDir == null ? 1 : level.startDir, hasKey: false, taken: [], opened: [] };
+}
+
+const FAIL_HINTS = {
+  wall:   (dirName, rel) => rel
+    ? `Bump! Bolt was facing ${dirName} and walked into a wall. Add a Turn block before that step, or use an If block to check for walls.`
+    : `Bump! Bolt tried to go ${dirName} into a wall. Look at the map and change that step or turn earlier.`,
+  locked: () => 'The door is locked 🔒! Walk onto the key, use Grab 🤚 to pick it up, then come back to the door.',
+  hot:    () => 'Ouch, hot tile! 🔥 Red tiles burn Bolt\'s toes. Jump over them instead of walking on them.',
+  hopwall: () => 'Bolt cannot jump over a wall. Walk to a spot where the tile ahead is clear.',
+  loop:   () => 'Whoa, your code kept going and going, like an endless loop! Make sure the loop can actually reach the ⭐.',
+};
+
+function simulate(level, program) {
+  const ctx = { level, st: initState(level), ticks: 0, max: 220, ev: [] };
+  const rel = !!(level.palette && level.palette.includes('walk'));
+  const push = (o) => ctx.ev.push({ type: 'step', ...o, st: ctx.st });
+  const fail = (id, reason, anim) => {
+    const dirName = DIRS[ctx.st.dir].n;
+    ctx.ev.push({ type: 'fail', id, reason, anim: anim || 'bump', st: ctx.st, hint: FAIL_HINTS[reason](dirName, rel) });
+  };
+  const win = (id) => ctx.ev.push({ type: 'win', id, st: ctx.st });
+
+  function evalCond(cond) {
+    const d = DIRS[ctx.st.dir];
+    const c = effCell(level, ctx.st, ctx.st.x + d.dx, ctx.st.y + d.dy);
+    if (cond === 'wall') return c === '#';
+    if (cond === 'red') return c === 'R';
+    return false;
+  }
+  function moveBlock(n, dirIdx, dist, anim) {
+    const d = DIRS[dirIdx];
+    const faced = { ...ctx.st, dir: dirIdx };
+    ctx.st = faced;
+    const nx = faced.x + d.dx * dist, ny = faced.y + d.dy * dist;
+    if (dist === 2) {
+      const mc = effCell(level, faced, faced.x + d.dx, faced.y + d.dy);
+      if (mc === '#' || mc === 'D') { fail(n.id, 'hopwall'); return true; }
+    }
+    const c = effCell(level, faced, nx, ny);
+    if (c === '#') { fail(n.id, 'wall'); return true; }
+    if (c === 'D') {
+      if (!faced.hasKey) { fail(n.id, 'locked'); return true; }
+      ctx.st = { ...faced, x: nx, y: ny, hasKey: false, opened: [...faced.opened, nx + ',' + ny] };
+      push({ id: n.id, anim: 'open', msg: 'Click! The key opened the door 🔓' });
+    } else if (c === 'R') {
+      ctx.st = { ...faced, x: nx, y: ny };
+      fail(n.id, 'hot', 'burn');
+      return true;
+    } else {
+      ctx.st = { ...faced, x: nx, y: ny };
+      push({ id: n.id, anim });
+    }
+    if (effCell(level, ctx.st, ctx.st.x, ctx.st.y) === 'G') { win(n.id); return true; }
+    return false;
+  }
+  function runList(list) { for (const n of list) if (exec(n)) return true; return false; }
+  function exec(n) {
+    if (++ctx.ticks > ctx.max) { fail(n.id, 'loop'); return true; }
+    switch (n.t) {
+      case 'up': case 'down': case 'left': case 'right': return moveBlock(n, DIRIDX[n.t], 1, 'move');
+      case 'walk': return moveBlock(n, ctx.st.dir, 1, 'move');
+      case 'jump': return moveBlock(n, ctx.st.dir, 2, 'hop');
+      case 'turnR': ctx.st = { ...ctx.st, dir: (ctx.st.dir + 1) % 4 }; push({ id: n.id, anim: 'turn' }); return false;
+      case 'turnL': ctx.st = { ...ctx.st, dir: (ctx.st.dir + 3) % 4 }; push({ id: n.id, anim: 'turn' }); return false;
+      case 'action': {
+        const k = ctx.st.x + ',' + ctx.st.y;
+        if (rawCell(level, ctx.st.x, ctx.st.y) === 'K' && !ctx.st.taken.includes(k)) {
+          ctx.st = { ...ctx.st, hasKey: true, taken: [...ctx.st.taken, k] };
+          push({ id: n.id, anim: 'grab', msg: 'Got the key! 🔑' });
+        } else push({ id: n.id, anim: 'nope', msg: 'Nothing to grab here.' });
+        return false;
+      }
+      case 'repeat':
+        for (let i = 0; i < n.n; i++) {
+          push({ id: n.id, fast: true, msg: `Loop ${i + 1} of ${n.n}` });
+          if (runList(n.body)) return true;
+        }
+        return false;
+      case 'until':
+        for (;;) {
+          if (++ctx.ticks > ctx.max) { fail(n.id, 'loop'); return true; }
+          push({ id: n.id, fast: true, msg: 'Not at the ⭐ yet, so loop again' });
+          if (runList(n.body)) return true;
+        }
+      case 'if': {
+        const yes = evalCond(n.cond);
+        push({ id: n.id, fast: true, msg: `Is the ${CONDS[n.cond].label}? ${yes ? 'YES → do the first part' : 'NO → do the else part'}` });
+        return runList(yes ? n.then : n.else);
+      }
+    }
+    return false;
+  }
+
+  const halted = runList(program);
+  if (!halted) {
+    const g = findCell(level, 'G');
+    const dist = Math.abs(g.x - ctx.st.x) + Math.abs(g.y - ctx.st.y);
+    ctx.ev.push({
+      type: 'end', st: ctx.st, id: null,
+      hint: program.length === 0
+        ? 'Your queue is empty! Add some blocks first.'
+        : `Your code finished, but Bolt is still ${dist} tile${dist === 1 ? '' : 's'} from the ⭐. Add more steps, or make a loop run more times.`,
+    });
+  }
+  const last = ctx.ev[ctx.ev.length - 1];
+  if (last && last.type === 'fail' && last.reason === 'loop' && ctx.ev.length > 40) {
+    ctx.ev = [...ctx.ev.slice(0, 36), last];
+  }
+  return ctx.ev;
+}
+function starsFor(level, count) {
+  return count <= level.stars[0] ? 3 : count <= level.stars[1] ? 2 : 1;
+}
+function attemptStars(wrongTries) { return wrongTries === 0 ? 3 : wrongTries <= 2 ? 2 : 1; }
+
+const GAME_EXPORTS = {
+  LEVELS, SECTIONS, BLOCK_DEFS, CONDS, DIRS, ACHS, TOTAL_CREDITS,
+  simulate, mk, starsFor, attemptStars, countBlocks, updateSlot, updateNode, removeNode,
+  subtreeIds, slotExists, insertBefore, toCode, getCredits, evalAch,
+  effCell, rawCell, findCell, initState,
+};
+if (typeof module !== 'undefined') module.exports = GAME_EXPORTS;
+if (typeof window !== 'undefined') window.GAME = GAME_EXPORTS;
+/* global React, ReactDOM, htm, GAME */
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+const html = htm.bind(React.createElement);
+const C = window.GAME; // core engine
+
+/* ---------------- sound (WebAudio, no assets) ---------------- */
+const Sound = (() => {
+  let ctx = null;
+  const get = () => { if (!ctx) { try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } return ctx; };
+  function beep(freq, dur, type = 'sine', vol = 0.14, delay = 0) {
+    const a = get(); if (!a) return;
+    const t0 = a.currentTime + delay;
+    const o = a.createOscillator(); const g = a.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t0);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol, t0 + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g); g.connect(a.destination);
+    o.start(t0); o.stop(t0 + dur + 0.02);
+  }
+  return {
+    click: () => beep(520, 0.07, 'square', 0.09),
+    place: () => beep(660, 0.08, 'triangle', 0.11),
+    remove: () => beep(300, 0.09, 'square', 0.08),
+    move: () => beep(440, 0.09, 'sine'),
+    bump: () => { beep(160, 0.16, 'sawtooth', 0.16); },
+    grab: () => { beep(880, 0.08, 'triangle'); beep(1100, 0.1, 'triangle', 0.12, 0.08); },
+    open: () => { beep(500, 0.1, 'triangle'); beep(760, 0.14, 'triangle', 0.12, 0.09); },
+    win: () => { [523, 659, 784, 1047].forEach((f, i) => beep(f, 0.18, 'triangle', 0.13, i * 0.09)); },
+    fail: () => { beep(220, 0.22, 'sawtooth', 0.14); beep(160, 0.24, 'sawtooth', 0.12, 0.09); },
+    achieve: () => { [660, 880, 1108, 1320].forEach((f, i) => beep(f, 0.2, 'sine', 0.13, i * 0.06)); },
+    tick: () => beep(900, 0.04, 'square', 0.06),
+    correct: () => { beep(700, 0.09, 'triangle'); beep(980, 0.14, 'triangle', 0.12, 0.07); },
+    wrong: () => beep(180, 0.2, 'sawtooth', 0.14),
+  };
+})();
+const SoundCtx = React.createContext(Sound);
+function useSound(on) {
+  return useMemo(() => {
+    if (!on) { const noop = () => {}; const o = {}; Object.keys(Sound).forEach(k => o[k] = noop); return o; }
+    return Sound;
+  }, [on]);
+}
+
+/* ---------------- persistence ---------------- */
+const SAVE_KEY = 'cyber-explorer-save-v1';
+function loadSave() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) throw new Error('empty');
+    const d = JSON.parse(raw);
+    return { done: d.done || {}, achievements: d.achievements || {}, sound: d.sound !== false, seenIntro: !!d.seenIntro };
+  } catch (e) {
+    return { done: {}, achievements: {}, sound: true, seenIntro: false };
+  }
+}
+function writeSave(state) {
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); } catch (e) {}
+}
+
+/* ---------------- small UI atoms ---------------- */
+function Coin({ size = 18 }) {
+  return html`<span style=${{ fontSize: size, filter: 'drop-shadow(0 1px 0 rgba(0,0,0,.25))' }}>🪙</span>`;
+}
+function Stars({ count, size = 16 }) {
+  return html`<span class="inline-flex gap-0.5">
+    ${[0, 1, 2].map(i => html`<span key=${i} style=${{ fontSize: size, opacity: i < count ? 1 : 0.25 }}>⭐</span>`)}
+  </span>`;
+}
+function BigButton({ onClick, children, tone = 'cyan', className = '', disabled }) {
+  const tones = {
+    cyan: 'bg-cyan-400 hover:bg-cyan-300 text-slate-900 shadow-[0_5px_0_0_#0e7490]',
+    green: 'bg-emerald-400 hover:bg-emerald-300 text-slate-900 shadow-[0_5px_0_0_#065f46]',
+    amber: 'bg-amber-400 hover:bg-amber-300 text-slate-900 shadow-[0_5px_0_0_#92400e]',
+    pink: 'bg-pink-400 hover:bg-pink-300 text-slate-900 shadow-[0_5px_0_0_#9d174d]',
+    violet: 'bg-violet-400 hover:bg-violet-300 text-slate-900 shadow-[0_5px_0_0_#5b21b6]',
+    slate: 'bg-slate-700 hover:bg-slate-600 text-slate-100 shadow-[0_5px_0_0_#0f172a]',
+  };
+  return html`<button
+    onClick=${onClick}
+    disabled=${disabled}
+    class="select-none active:translate-y-[3px] active:shadow-none transition-all duration-100 rounded-2xl font-bold px-5 py-3 text-base sm:text-lg disabled:opacity-40 disabled:pointer-events-none ${tones[tone]} ${className}"
+  >${children}</button>`;
+}
+function IconButton({ onClick, label, children, active }) {
+  return html`<button onClick=${onClick} title=${label} aria-label=${label}
+    class="w-11 h-11 rounded-xl grid place-items-center text-xl transition-colors ${active ? 'bg-cyan-400 text-slate-900' : 'bg-white/10 hover:bg-white/20 text-white'}">
+    ${children}
+  </button>`;
+}
+function Modal({ title, onClose, children, wide }) {
+  return html`<div class="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4" onClick=${onClose}>
+    <div onClick=${e => e.stopPropagation()}
+      class="bg-slate-900 border border-white/10 rounded-3xl w-full ${wide ? 'max-w-2xl' : 'max-w-md'} max-h-[85vh] overflow-y-auto shadow-2xl">
+      <div class="sticky top-0 bg-slate-900/95 backdrop-blur border-b border-white/10 px-5 py-4 flex items-center justify-between">
+        <h2 class="font-display text-xl text-white">${title}</h2>
+        <button onClick=${onClose} class="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 grid place-items-center text-white">✕</button>
+      </div>
+      <div class="p-5">${children}</div>
+    </div>
+  </div>`;
+}
+function Toast({ toast }) {
+  if (!toast) return null;
+  return html`<div class="fixed top-20 left-1/2 -translate-x-1/2 z-[60] animate-toast-in">
+    <div class="flex items-center gap-3 bg-gradient-to-r from-fuchsia-500 to-violet-500 text-white rounded-2xl px-5 py-3 shadow-2xl border border-white/20">
+      <span class="text-3xl">${toast.icon}</span>
+      <div>
+        <div class="text-xs uppercase tracking-wide font-bold opacity-90">Achievement Unlocked!</div>
+        <div class="font-display text-lg leading-tight">${toast.name}</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ---------------- header / footer ---------------- */
+function Header({ credits, onMap, onAchievements, soundOn, onSound, onHelp, unlockedAchCount, view }) {
+  return html`<header class="sticky top-0 z-40 bg-slate-950/85 backdrop-blur border-b border-white/10">
+    <div class="max-w-6xl mx-auto px-3 sm:px-5 h-16 flex items-center justify-between gap-2">
+      <button onClick=${onMap} class="flex items-center gap-2 shrink-0">
+        <span class="text-2xl">🤖</span>
+        <span class="font-display text-lg sm:text-xl text-white tracking-wide hidden xs:inline">Cyber Explorer</span>
+      </button>
+      <div class="flex items-center gap-2">
+        <div class="flex items-center gap-1.5 bg-white/10 rounded-full pl-2 pr-3 py-1.5 border border-white/10">
+          <${Coin} size=${20}/>
+          <span class="font-display text-white text-sm sm:text-base">${credits} <span class="opacity-60 font-nunito text-xs">/ ${C.TOTAL_CREDITS}</span></span>
+        </div>
+        <div class="relative">
+          <${IconButton} onClick=${onAchievements} label="Achievements">🏅</${IconButton}>
+          ${unlockedAchCount > 0 ? html`<span class="absolute -top-1 -right-1 bg-pink-500 text-white text-[10px] font-bold rounded-full w-4 h-4 grid place-items-center">${unlockedAchCount}</span>` : null}
+        </div>
+        <${IconButton} onClick=${onSound} label="Sound" active=${soundOn}>${soundOn ? '🔊' : '🔇'}</${IconButton}>
+        ${view !== 'map' ? html`<${IconButton} onClick=${onMap} label="Level map">🗺️</${IconButton}>` : null}
+      </div>
+    </div>
+  </header>`;
+}
+
+function Footer({ onOpen }) {
+  const links = [['about', 'About'], ['privacy', 'Privacy Policy'], ['contact', 'Contact us']];
+  return html`<footer class="mt-10 border-t border-white/10 bg-slate-950/60">
+    <div class="max-w-6xl mx-auto px-5 py-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-slate-400">
+      <p class="font-nunito">🤖 Cyber Explorer — a coding playground for young explorers.</p>
+      <div class="flex items-center gap-4">
+        ${links.map(([k, label]) => html`<button key=${k} onClick=${() => onOpen(k)} class="hover:text-cyan-300 underline decoration-dotted underline-offset-4">${label}</button>`)}
+      </div>
+    </div>
+  </footer>`;
+}
+
+function AboutModal({ onClose }) {
+  return html`<${Modal} title="About Cyber Explorer" onClose=${onClose}>
+    <div class="space-y-3 text-slate-300 font-nunito leading-relaxed">
+      <p>Cyber Explorer is a story-driven coding playground built for young explorers aged 7 to 12. Bolt the robot needs help crossing three worlds — Circuit Meadow, Loop Canyon and Code Castle — and every level teaches one real programming idea: putting steps in order, repeating actions with loops, making decisions with conditions, and reading real code.</p>
+      <p>There's nothing to install and nothing to download. Everything runs right here in the browser, and progress is saved on this device automatically.</p>
+      <p class="text-slate-400 text-sm">Version 1.0 · Made with curiosity, coffee, and a lot of test runs through the maze. 🧪</p>
+    </div>
+  </${Modal}>`;
+}
+
+function PrivacyModal({ onClose }) {
+  const Item = (t, d) => html`<div><h3 class="font-display text-cyan-300 mb-1">${t}</h3><p>${d}</p></div>`;
+  return html`<${Modal} title="Privacy Policy" onClose=${onClose} wide=${true}>
+    <div class="space-y-4 text-slate-300 font-nunito leading-relaxed text-sm">
+      <p class="text-slate-400">Last updated September 2026. We built Cyber Explorer to be safe for kids from the ground up.</p>
+      ${Item('What we collect', 'Nothing leaves your device. There are no accounts, no sign-ups, and no forms that ask for a name, email, age, or location anywhere in the game.')}
+      ${Item('Where progress is stored', "Your stars, credits, and badges are saved using your browser's local storage, on this device only. We never see this information, and it is never sent to a server.")}
+      ${Item('Cookies and tracking', 'This game does not use tracking cookies, analytics pixels, or third-party advertising scripts.')}
+      ${Item('Sound and permissions', 'Sound effects are generated in the browser. The game never requests your microphone, camera, or contacts.')}
+      ${Item('Clearing your data', "Clearing your browser's site data for this page will remove all saved progress. There is no way for us to recover it, since we never had a copy.")}
+      ${Item('Contact', 'Questions about privacy can be sent through the Contact page linked in the footer.')}
+    </div>
+  </${Modal}>`;
+}
+
+function ContactModal({ onClose }) {
+  const [sent, setSent] = useState(false);
+  const [name, setName] = useState(''); const [msg, setMsg] = useState('');
+  return html`<${Modal} title="Contact us" onClose=${onClose}>
+    ${sent ? html`
+      <div class="text-center py-6">
+        <div class="text-5xl mb-3">📨</div>
+        <p class="font-display text-white text-lg mb-1">Message ready!</p>
+        <p class="text-slate-400 text-sm font-nunito">This is a demo form, so nothing was actually sent — but that's exactly how it would work.</p>
+      </div>`
+      : html`
+      <div class="space-y-3 font-nunito">
+        <p class="text-slate-400 text-sm">Grown-ups and educators: send us a note about bugs, ideas, or classroom use. This demo form doesn't transmit data anywhere.</p>
+        <input value=${name} onInput=${e => setName(e.target.value)} placeholder="Your name"
+          class="w-full rounded-xl bg-slate-800 border border-white/10 px-4 py-2.5 text-white placeholder-slate-500 outline-none focus:border-cyan-400"/>
+        <textarea value=${msg} onInput=${e => setMsg(e.target.value)} placeholder="What's on your mind?" rows=${4}
+          class="w-full rounded-xl bg-slate-800 border border-white/10 px-4 py-2.5 text-white placeholder-slate-500 outline-none focus:border-cyan-400"/>
+        <${BigButton} tone="cyan" onClick=${() => setSent(true)} className="w-full">Send message</${BigButton}>
+      </div>`}
+  </${Modal}>`;
+}
+
+function AchievementsModal({ unlocked, onClose }) {
+  return html`<${Modal} title="Achievements" onClose=${onClose} wide=${true}>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      ${C.ACHS.map(a => {
+        const got = !!unlocked[a.id];
+        return html`<div key=${a.id} class="rounded-2xl p-4 border flex items-center gap-3 ${got ? 'border-white/20' : 'border-white/5 opacity-50'}"
+          style=${{ background: got ? `linear-gradient(135deg, ${a.color}33, transparent)` : 'transparent' }}>
+          <div class="w-14 h-14 rounded-2xl grid place-items-center text-3xl shrink-0" style=${{ background: got ? a.color + '33' : '#ffffff0d' }}>${got ? a.icon : '🔒'}</div>
+          <div>
+            <div class="font-display text-white">${a.name}</div>
+            <div class="text-slate-400 text-sm font-nunito">${a.desc}</div>
+          </div>
+        </div>`;
+      })}
+    </div>
+  </${Modal}>`;
+}
+
+/* ---------------- level map screen ---------------- */
+const NODE_POS = {
+  '1.1': [14, 78], '1.2': [38, 58], '1.3': [62, 74],
+  '2.1': [16, 76], '2.2': [50, 56], '2.3': [82, 72],
+  '3.1': [18, 76], '3.2': [50, 52], '3.3': [82, 70],
+};
+function isUnlocked(levelId, done) {
+  const idx = C.LEVELS.findIndex(l => l.id === levelId);
+  if (idx === 0) return true;
+  return !!done[C.LEVELS[idx - 1].id];
+}
+function ZonePath({ levels, done, onPlay, sectionMeta }) {
+  const pts = levels.map(l => NODE_POS[l.id]);
+  const d = `M ${pts[0][0]} ${pts[0][1]} Q ${pts[1][0]} ${pts[1][1] - 22} ${pts[1][0]} ${pts[1][1]} T ${pts[2][0]} ${pts[2][1]}`;
+  return html`<div class="relative w-full aspect-[16/9] rounded-3xl overflow-hidden border border-white/10"
+    style=${{ background: `radial-gradient(circle at 15% 20%, ${sectionMeta.color}22, transparent 60%), linear-gradient(180deg, #0f172a, #0b1120)` }}>
+    <div class="absolute inset-0 opacity-[0.15]" style=${{
+      backgroundImage: 'linear-gradient(#ffffff22 1px, transparent 1px), linear-gradient(90deg, #ffffff22 1px, transparent 1px)',
+      backgroundSize: '28px 28px',
+    }}/>
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none" class="absolute inset-0 w-full h-full">
+      <path d=${d} fill="none" stroke=${sectionMeta.color} strokeWidth="1.1" strokeDasharray="3 2.4" opacity="0.7"/>
+    </svg>
+    <div class="absolute top-4 left-5 flex items-center gap-2">
+      <span class="text-2xl">${sectionMeta.emoji}</span>
+      <div>
+        <div class="font-display text-white text-lg leading-tight">${sectionMeta.zone}</div>
+        <div class="text-xs text-slate-400 font-nunito">${sectionMeta.name} · ${sectionMeta.sub}</div>
+      </div>
+    </div>
+    ${levels.map((l, i) => {
+      const [x, y] = NODE_POS[l.id];
+      const unlocked = isUnlocked(l.id, done);
+      const completed = !!done[l.id];
+      return html`<button key=${l.id} disabled=${!unlocked} onClick=${() => onPlay(l.id)}
+        class="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-1 group"
+        style=${{ left: x + '%', top: y + '%' }}>
+        <div class="relative w-16 h-16 sm:w-20 sm:h-20 rounded-full grid place-items-center text-2xl sm:text-3xl border-4 transition-transform group-active:scale-95 ${unlocked ? 'group-hover:scale-105' : ''}"
+          style=${{
+            background: completed ? sectionMeta.color : unlocked ? '#1e293b' : '#0f172a',
+            borderColor: unlocked ? sectionMeta.color : '#334155',
+            boxShadow: unlocked && !completed ? `0 0 0 6px ${sectionMeta.color}22` : 'none',
+          }}>
+          ${!unlocked ? '🔒' : completed ? '✅' : (i + 1)}
+        </div>
+        <div class="text-[11px] sm:text-xs font-nunito font-bold text-white bg-slate-900/80 rounded-full px-2 py-0.5 whitespace-nowrap">${l.title}</div>
+        ${completed ? html`<${Stars} count=${done[l.id].stars} size=${12}/>` : null}
+      </button>`;
+    })}
+  </div>`;
+}
+function MapScreen({ done, onPlay }) {
+  return html`<div class="max-w-5xl mx-auto px-4 py-6 space-y-8">
+    <div class="text-center space-y-2">
+      <h1 class="font-display text-3xl sm:text-4xl text-white">Choose your mission</h1>
+      <p class="text-slate-400 font-nunito">Help Bolt the robot cross three worlds and become a Master Hacker.</p>
+    </div>
+    ${C.SECTIONS.map(sec => {
+      const lv = C.LEVELS.filter(l => l.section === sec.n);
+      return html`<${ZonePath} key=${sec.n} levels=${lv} done=${done} onPlay=${onPlay} sectionMeta=${sec}/>`;
+    })}
+  </div>`;
+}
+
+/* ---------------- grid stage (blocks levels) ---------------- */
+const TILE_STYLES = {
+  '.': { bg: '#1e293b', border: '#334155' },
+  'S': { bg: '#1e293b', border: '#334155' },
+  '#': { bg: '#334155', border: '#475569', wall: true },
+  'G': { bg: '#1e293b', border: '#eab308' },
+  'K': { bg: '#1e293b', border: '#eab308' },
+  'D': { bg: '#1e293b', border: '#f97316' },
+  'R': { bg: '#7f1d1d', border: '#ef4444' },
+};
+const DIR_ROT = { up: -90, right: 0, down: 90, left: 180 };
+function GridStage({ level, state, anim, bump, message }) {
+  const rows = level.grid;
+  const cols = rows[0].length;
+  const CELLPX = Math.min(64, Math.floor(340 / Math.max(cols, rows.length)));
+  const w = cols * CELLPX, h = rows.length * CELLPX;
+  const dirName = C.DIRS[state.dir].n;
+  return html`<div class="w-full flex flex-col items-center gap-2">
+    <div class="relative rounded-2xl p-3 bg-slate-950 border border-white/10 overflow-auto max-w-full">
+      <div class="relative" style=${{ width: w, height: h }}>
+        ${rows.map((row, y) => Array.from(row).map((ch0, x) => {
+          const ch = C.effCell(level, state, x, y);
+          const st = TILE_STYLES[ch] || TILE_STYLES['.'];
+          const hasKey = ch0 === 'K' && ch === 'K';
+          const hasDoorLocked = ch0 === 'D' && ch === 'D';
+          const isGoal = ch === 'G';
+          return html`<div key=${x + '-' + y} class="absolute flex items-center justify-center rounded-md"
+            style=${{ left: x * CELLPX, top: y * CELLPX, width: CELLPX - 2, height: CELLPX - 2, background: st.bg, border: `2px solid ${st.border}`, fontSize: CELLPX * 0.5 }}>
+            ${st.wall ? html`<span style=${{ opacity: .5 }}>▦</span>` : null}
+            ${hasKey ? html`<span class="animate-bounce-slow">🔑</span>` : null}
+            ${hasDoorLocked ? html`<span>🚪</span>` : null}
+            ${isGoal ? html`<span class="animate-pulse">⭐</span>` : null}
+            ${ch === 'R' ? html`<span>🔥</span>` : null}
+          </div>`;
+        }))}
+        <div class="absolute grid place-items-center transition-all ease-out duration-300 ${anim === 'move' || anim === 'hop' ? 'duration-300' : 'duration-150'}"
+          style=${{
+            left: state.x * CELLPX, top: state.y * CELLPX, width: CELLPX - 2, height: CELLPX - 2,
+            fontSize: CELLPX * 0.62,
+            transform: `rotate(${DIR_ROT[dirName]}deg) ${anim === 'hop' ? 'translateY(-14px) scale(1.1)' : ''} ${bump ? 'translateX(0)' : ''}`,
+          }}>
+          <span class="inline-block ${bump ? 'animate-bump' : ''} ${anim === 'burn' ? 'animate-burn' : ''} ${anim === 'grab' ? 'animate-pop' : ''}" style=${{ transform: `rotate(${-DIR_ROT[dirName]}deg)` }}>🤖</span>
+        </div>
+      </div>
+    </div>
+    ${message ? html`<div class="max-w-xs text-center text-xs sm:text-sm bg-slate-800 text-slate-200 font-nunito rounded-xl px-3 py-2 border border-white/10 animate-fade-in">${message}</div>` : null}
+  </div>`;
+}
+
+/* ---------------- program editor (drag + tap) ---------------- */
+function PaletteChip({ type, onAdd, onDragStart }) {
+  const def = C.BLOCK_DEFS[type];
+  const catColor = { move: '#0891b2', act: '#d946ef', loop: '#f59e0b', cond: '#8b5cf6' }[def.cat];
+  return html`<button draggable="true"
+    onDragStart=${e => { e.dataTransfer.setData('text/block', type); onDragStart && onDragStart(); }}
+    onClick=${() => onAdd(type)}
+    class="flex items-center gap-1.5 rounded-xl px-3 py-2.5 font-nunito font-bold text-sm text-white active:scale-95 transition-transform shrink-0 border-b-4"
+    style=${{ background: catColor + 'cc', borderColor: catColor }}>
+    <span class="text-lg">${def.icon}</span>${def.label}
+  </button>`;
+}
+function Palette({ palette, onAdd }) {
+  return html`<div class="flex gap-2 overflow-x-auto pb-1 px-0.5 -mx-0.5">
+    ${palette.map(t => html`<${PaletteChip} key=${t} type=${t} onAdd=${onAdd}/>`)}
+  </div>`;
+}
+
+function NodeChrome({ color, icon, label, extra, onRemove, children, active, onClick }) {
+  return html`<div onClick=${onClick} class="rounded-xl border-l-4 px-2.5 py-2 ${active ? 'ring-2 ring-cyan-300' : ''}"
+    style=${{ background: color + '22', borderColor: color }}>
+    <div class="flex items-center justify-between gap-2">
+      <div class="flex items-center gap-1.5 font-nunito font-bold text-sm text-white">
+        <span>${icon}</span><span>${label}</span>${extra}
+      </div>
+      <button onClick=${e => { e.stopPropagation(); onRemove(); }} class="w-6 h-6 rounded-full bg-white/10 hover:bg-red-500/70 text-white text-xs grid place-items-center">✕</button>
+    </div>
+    ${children}
+  </div>`;
+}
+function SlotWell({ nodes, slotKey, activeSlot, onSelectSlot, renderNode, empty }) {
+  return html`<div onClick=${e => { e.stopPropagation(); onSelectSlot(slotKey); }}
+    onDragOver=${e => e.preventDefault()}
+    onDrop=${e => { e.preventDefault(); onSelectSlot(slotKey, e.dataTransfer.getData('text/block')); }}
+    class="mt-1.5 ml-1 pl-2.5 border-l-2 border-dashed rounded-sm space-y-1.5 min-h-[38px] py-1 transition-colors ${activeSlot === slotKey ? 'border-cyan-300 bg-cyan-400/10' : 'border-white/15'}">
+    ${nodes.length === 0 ? html`<div class="text-xs text-slate-400 font-nunito italic py-1">${empty || 'tap here, then tap a block below'}</div>` : nodes.map(n => renderNode(n))}
+  </div>`;
+}
+function ProgramNode({ node, activeSlot, onSelectSlot, onRemove, onChangeN, onChangeCond, conds, runId, locked }) {
+  const running = runId === node.id;
+  const wrap = child => html`<div class=${running ? 'ring-2 ring-cyan-300 rounded-xl animate-pulse-fast' : ''}>${child}</div>`;
+  if (node.t === 'repeat') {
+    return wrap(html`<${NodeChrome} key=${node.id} color="#f59e0b" icon="🔁" label="Repeat"
+      extra=${html`<span class="flex items-center gap-1 bg-black/20 rounded-lg px-1">
+        <button disabled=${locked} onClick=${e => { e.stopPropagation(); onChangeN(node.id, Math.max(1, node.n - 1)); }} class="w-5 h-5 rounded bg-white/20 text-white disabled:opacity-30">−</button>
+        <span class="w-5 text-center">${node.n}</span>
+        <button disabled=${locked} onClick=${e => { e.stopPropagation(); onChangeN(node.id, node.n + 1); }} class="w-5 h-5 rounded bg-white/20 text-white disabled:opacity-30">+</button>
+        <span class="opacity-70">×</span>
+      </span>`}
+      onRemove=${() => !locked && onRemove(node.id)}>
+      <${SlotWell} nodes=${node.body} slotKey=${node.id + ':body'} activeSlot=${activeSlot} onSelectSlot=${locked ? () => {} : onSelectSlot}
+        renderNode=${c => html`<${ProgramNode} key=${c.id} node=${c} activeSlot=${activeSlot} onSelectSlot=${onSelectSlot} onRemove=${onRemove} onChangeN=${onChangeN} onChangeCond=${onChangeCond} conds=${conds} runId=${runId} locked=${locked}/>`}/>
+    </${NodeChrome}>`);
+  }
+  if (node.t === 'until') {
+    return wrap(html`<${NodeChrome} key=${node.id} color="#22d3ee" icon="🎯" label="Repeat until ⭐" onRemove=${() => !locked && onRemove(node.id)}>
+      <${SlotWell} nodes=${node.body} slotKey=${node.id + ':body'} activeSlot=${activeSlot} onSelectSlot=${locked ? () => {} : onSelectSlot}
+        renderNode=${c => html`<${ProgramNode} key=${c.id} node=${c} activeSlot=${activeSlot} onSelectSlot=${onSelectSlot} onRemove=${onRemove} onChangeN=${onChangeN} onChangeCond=${onChangeCond} conds=${conds} runId=${runId} locked=${locked}/>`}/>
+    </${NodeChrome}>`);
+  }
+  if (node.t === 'if') {
+    return wrap(html`<${NodeChrome} key=${node.id} color="#8b5cf6" icon="🔀" label="If"
+      extra=${html`<select value=${node.cond} disabled=${locked} onClick=${e => e.stopPropagation()} onChange=${e => onChangeCond(node.id, e.target.value)}
+        class="bg-black/30 text-white text-xs rounded-lg px-1.5 py-0.5 outline-none">
+        ${conds.map(c => html`<option key=${c} value=${c}>${C.CONDS[c].label}</option>`)}
+      </select>`}
+      onRemove=${() => !locked && onRemove(node.id)}>
+      <div class="text-[11px] text-emerald-300 font-nunito font-bold mt-1">then</div>
+      <${SlotWell} nodes=${node.then} slotKey=${node.id + ':then'} activeSlot=${activeSlot} onSelectSlot=${locked ? () => {} : onSelectSlot}
+        renderNode=${c => html`<${ProgramNode} key=${c.id} node=${c} activeSlot=${activeSlot} onSelectSlot=${onSelectSlot} onRemove=${onRemove} onChangeN=${onChangeN} onChangeCond=${onChangeCond} conds=${conds} runId=${runId} locked=${locked}/>`}/>
+      <div class="text-[11px] text-rose-300 font-nunito font-bold mt-1">else</div>
+      <${SlotWell} nodes=${node.else} slotKey=${node.id + ':else'} activeSlot=${activeSlot} onSelectSlot=${locked ? () => {} : onSelectSlot}
+        renderNode=${c => html`<${ProgramNode} key=${c.id} node=${c} activeSlot=${activeSlot} onSelectSlot=${onSelectSlot} onRemove=${onRemove} onChangeN=${onChangeN} onChangeCond=${onChangeCond} conds=${conds} runId=${runId} locked=${locked}/>`}/>
+    </${NodeChrome}>`);
+  }
+  const def = C.BLOCK_DEFS[node.t];
+  const catColor = { move: '#0891b2', act: '#d946ef' }[def.cat] || '#0891b2';
+  return wrap(html`<div key=${node.id} class="flex items-center justify-between rounded-lg px-2.5 py-1.5 font-nunito font-bold text-sm text-white" style=${{ background: catColor + '33', borderLeft: `4px solid ${catColor}` }}>
+    <span>${def.icon} ${def.label}</span>
+    <button disabled=${locked} onClick=${() => onRemove(node.id)} class="w-5 h-5 rounded-full bg-white/10 hover:bg-red-500/70 text-xs grid place-items-center disabled:opacity-0">✕</button>
+  </div>`);
+}
+function ProgramEditor({ program, activeSlot, onSelectSlot, onRemove, onChangeN, onChangeCond, conds, limit, runId, locked }) {
+  const count = C.countBlocks(program);
+  const over = limit && count > limit;
+  return html`<div class="rounded-2xl bg-slate-900 border border-white/10 p-3 flex flex-col h-full min-h-[220px]">
+    <div class="flex items-center justify-between mb-2">
+      <span class="font-display text-white text-sm">Your code</span>
+      ${limit ? html`<span class="text-xs font-nunito font-bold px-2 py-0.5 rounded-full ${over ? 'bg-red-500/30 text-red-300' : 'bg-white/10 text-slate-300'}">${count} / ${limit} blocks</span>` : html`<span class="text-xs font-nunito text-slate-400">${count} blocks</span>`}
+    </div>
+    <${SlotWell} nodes=${program} slotKey="root" activeSlot=${activeSlot} onSelectSlot=${locked ? () => {} : onSelectSlot} empty="tap a block below to start!"
+      renderNode=${n => html`<${ProgramNode} key=${n.id} node=${n} activeSlot=${activeSlot} onSelectSlot=${onSelectSlot} onRemove=${onRemove} onChangeN=${onChangeN} onChangeCond=${onChangeCond} conds=${conds} runId=${runId} locked=${locked}/>`}/>
+  </div>`;
+}
+
+/* ---------------- shared level chrome ---------------- */
+function StoryBanner({ level, sectionMeta }) {
+  return html`<div class="rounded-2xl p-4 mb-4 border flex items-start gap-3" style=${{ background: sectionMeta.color + '1a', borderColor: sectionMeta.color + '55' }}>
+    <span class="text-3xl shrink-0">${sectionMeta.emoji}</span>
+    <div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <h2 class="font-display text-white text-lg">${level.id} · ${level.title}</h2>
+        <span class="text-[11px] font-nunito font-bold px-2 py-0.5 rounded-full text-slate-900" style=${{ background: sectionMeta.color }}>${level.concept}</span>
+      </div>
+      <p class="text-slate-300 text-sm font-nunito mt-0.5">${level.story}</p>
+    </div>
+  </div>`;
+}
+function LevelComplete({ stars, credits, firstTime, onNext, onReplay, onMap, hasNext }) {
+  return html`<div class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-gradient-to-b from-slate-800 to-slate-900 border border-white/10 rounded-3xl max-w-sm w-full p-6 text-center animate-pop shadow-2xl">
+      <div class="text-6xl mb-2 animate-bounce-slow">🎉</div>
+      <h2 class="font-display text-2xl text-white mb-1">Mission complete!</h2>
+      <div class="flex justify-center my-3"><${Stars} count=${stars} size=${34}/></div>
+      ${firstTime ? html`<div class="flex items-center justify-center gap-1.5 text-amber-300 font-display mb-4"><${Coin} size=${20}/> +${credits} credits</div>`
+        : html`<div class="text-slate-400 text-sm font-nunito mb-4">Already completed — replay anytime to improve your stars!</div>`}
+      <div class="flex flex-col gap-2">
+        ${hasNext ? html`<${BigButton} tone="green" onClick=${onNext} className="w-full">Next mission →</${BigButton}>` : null}
+        <${BigButton} tone="cyan" onClick=${onReplay} className="w-full">Replay</${BigButton}>
+        <${BigButton} tone="slate" onClick=${onMap} className="w-full">Back to map</${BigButton}>
+      </div>
+    </div>
+  </div>`;
+}
+function DebugHint({ text, onClose }) {
+  return html`<div class="rounded-2xl bg-red-500/15 border border-red-400/40 p-3 flex items-start gap-2 animate-fade-in">
+    <span class="text-xl">🐞</span>
+    <div class="flex-1">
+      <div class="text-red-300 font-display text-sm mb-0.5">Debug hint</div>
+      <p class="text-red-100/90 text-sm font-nunito">${text}</p>
+    </div>
+    <button onClick=${onClose} class="text-red-300/70 hover:text-red-200">✕</button>
+  </div>`;
+}
+
+/* ---------------- Section 1 & 2: block levels ---------------- */
+function LevelPlayBlocks({ level, sectionMeta, onComplete, onExit, alreadyDone }) {
+  const [program, setProgram] = useState([]);
+  const [activeSlot, setActiveSlot] = useState('root');
+  const [state, setState] = useState(() => C.initState(level));
+  const [anim, setAnim] = useState(null);
+  const [bump, setBump] = useState(false);
+  const [message, setMessage] = useState(null);
+  const [debug, setDebug] = useState(null);
+  const [running, setRunning] = useState(false);
+  const [runId, setRunId] = useState(null);
+  const [wrongTries, setWrongTries] = useState(0);
+  const [result, setResult] = useState(null); // {stars, credits}
+  const [showHint, setShowHint] = useState(false);
+  const timers = useRef([]);
+  const sfx = React.useContext(SoundCtx);
+
+  useEffect(() => () => timers.current.forEach(clearTimeout), []);
+
+  function reset(fullReset) {
+    timers.current.forEach(clearTimeout); timers.current = [];
+    setState(C.initState(level)); setAnim(null); setBump(false); setMessage(null); setRunning(false); setRunId(null);
+    if (fullReset) { setProgram([]); setDebug(null); setResult(null); setWrongTries(0); }
+  }
+
+  function selectSlot(key, dropType) {
+    setActiveSlot(key);
+    if (dropType) addBlock(dropType, key);
+  }
+  function addBlock(type, slotOverride) {
+    sfx.place();
+    const slot = slotOverride || activeSlot;
+    const key = C.slotExists(program, slot) ? slot : 'root';
+    const node = C.mk(type, level);
+    setProgram(p => C.updateSlot(p, key, list => [...list, node]));
+    setDebug(null);
+    // auto-focus the new container's first slot so kids can nest immediately
+    if (node.t === 'repeat' || node.t === 'until') setActiveSlot(node.id + ':body');
+    else if (node.t === 'if') setActiveSlot(node.id + ':then');
+  }
+  function removeBlock(id) {
+    sfx.remove();
+    setProgram(p => { const [tree] = C.removeNode(p, id); return tree; });
+  }
+  function changeN(id, n) { setProgram(p => C.updateNode(p, id, node => ({ ...node, n }))); }
+  function changeCond(id, cond) { setProgram(p => C.updateNode(p, id, node => ({ ...node, cond }))); }
+
+  function run() {
+    if (running) return;
+    setDebug(null); setResult(null);
+    const events = C.simulate(level, program);
+    setRunning(true);
+    setState(C.initState(level));
+    let i = 0;
+    const step = () => {
+      if (i >= events.length) { setRunning(false); setRunId(null); return; }
+      const ev = events[i];
+      setState(ev.st);
+      setRunId(ev.id || null);
+      setAnim(ev.anim || null);
+      setMessage(ev.msg || null);
+      if (ev.anim === 'move') sfx.move();
+      if (ev.anim === 'hop') sfx.move();
+      if (ev.anim === 'grab') sfx.grab();
+      if (ev.anim === 'open') sfx.open();
+      if (ev.type === 'fail') {
+        sfx.fail(); sfx.bump && sfx.bump();
+        setBump(true);
+        setWrongTries(w => w + 1);
+        timers.current.push(setTimeout(() => setBump(false), 420));
+        setDebug(ev.hint);
+        setRunning(false); setRunId(null);
+        return;
+      }
+      if (ev.type === 'win') {
+        sfx.win();
+        const count = C.countBlocks(program);
+        const stars = C.starsFor(level, count);
+        timers.current.push(setTimeout(() => {
+          setRunning(false); setRunId(null);
+          setResult({ stars, credits: level.credits });
+          onComplete(level.id, stars);
+        }, 380));
+        return;
+      }
+      if (ev.type === 'end') {
+        setDebug(ev.hint); setWrongTries(w => w + 1);
+        setRunning(false); setRunId(null);
+        return;
+      }
+      i++;
+      timers.current.push(setTimeout(step, ev.fast ? 90 : 300));
+    };
+    step();
+  }
+
+  const done = alreadyDone(level.id);
+  return html`<div class="max-w-5xl mx-auto px-4 py-5">
+    ${result ? html`<${LevelComplete} stars=${result.stars} credits=${result.credits} firstTime=${!done}
+        onNext=${() => onExit('next')}
+        onReplay=${() => reset(true)}
+        onMap=${() => onExit('map')}
+        hasNext=${!!nextLevelId(level.id)}/>` : null}
+    <${StoryBanner} level=${level} sectionMeta=${sectionMeta}/>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="flex flex-col gap-3">
+        <${GridStage} level=${level} state=${state} anim=${anim} bump=${bump} message=${message}/>
+        <div class="flex flex-wrap gap-2 justify-center">
+          <${BigButton} tone="green" onClick=${run} disabled=${running || program.length === 0}>▶ Run code</${BigButton}>
+          <${BigButton} tone="slate" onClick=${() => reset(false)} disabled=${running}>↺ Reset run</${BigButton}>
+          <${BigButton} tone="pink" onClick=${() => setShowHint(s => !s)}>💡 Hint</${BigButton}>
+        </div>
+        ${showHint ? html`<div class="rounded-2xl bg-amber-400/10 border border-amber-300/30 p-3 text-amber-200 text-sm font-nunito">${level.hint}</div>` : null}
+        ${debug ? html`<${DebugHint} text=${debug} onClose=${() => setDebug(null)}/>` : null}
+      </div>
+      <div class="flex flex-col gap-3">
+        <${ProgramEditor} program=${program} activeSlot=${activeSlot} onSelectSlot=${selectSlot}
+          onRemove=${removeBlock} onChangeN=${changeN} onChangeCond=${changeCond} conds=${level.conds.length ? level.conds : ['wall']}
+          limit=${level.limit} runId=${runId} locked=${running}/>
+        <div>
+          <div class="text-xs text-slate-400 font-nunito mb-1.5">Tap a slot above to choose where new blocks go, then tap a block:</div>
+          <${Palette} palette=${level.palette} onAdd=${addBlock}/>
+        </div>
+        <${BigButton} tone="slate" onClick=${() => setProgram([])} disabled=${running} className="self-start">🗑 Clear all blocks</${BigButton}>
+      </div>
+    </div>
+  </div>`;
+}
+function nextLevelId(id) {
+  const idx = C.LEVELS.findIndex(l => l.id === id);
+  return idx >= 0 && idx < C.LEVELS.length - 1 ? C.LEVELS[idx + 1].id : null;
+}
+
+/* ---------------- Section 3.1: syntax repair ---------------- */
+function CodeLine({ parts, blanks, values, focusIdx, onFocus }) {
+  return html`<div class="font-mono text-[13px] sm:text-sm leading-7 whitespace-pre-wrap break-words">
+    ${parts.map((p, i) => {
+      if (p.t !== undefined) return html`<span key=${i} class="text-slate-200">${p.t}</span>`;
+      if (p.cm !== undefined) return html`<span key=${i} class="text-slate-500">${p.cm}</span>`;
+      if (p.b !== undefined) {
+        const bi = p.b;
+        const filled = values[bi];
+        const isFocus = focusIdx === bi;
+        return html`<button key=${i} onClick=${() => onFocus(bi)}
+          class="inline-block mx-0.5 px-2 py-0.5 rounded-md border-b-2 font-bold align-middle ${filled ? 'bg-cyan-400/20 border-cyan-300 text-cyan-200' : 'bg-amber-400/10 border-amber-300 text-amber-200'} ${isFocus ? 'ring-2 ring-white' : ''}">
+          ${filled || '____'}
+        </button>`;
+      }
+      return null;
+    })}
+  </div>`;
+}
+function LevelPlaySyntax({ level, sectionMeta, onComplete, onExit, alreadyDone }) {
+  const n = level.blanks.length;
+  const [values, setValues] = useState(Array(n).fill(null));
+  const [focusIdx, setFocusIdx] = useState(0);
+  const [checked, setChecked] = useState(false);
+  const [wrongMask, setWrongMask] = useState([]);
+  const [wrongTries, setWrongTries] = useState(0);
+  const [result, setResult] = useState(null);
+  const [built, setBuilt] = useState(false);
+  const sfx = React.useContext(SoundCtx);
+  const done = alreadyDone(level.id);
+
+  function pick(chip) {
+    setValues(v => { const nv = v.slice(); nv[focusIdx] = chip; return nv; });
+    setChecked(false);
+    sfx.click();
+    if (focusIdx < n - 1) setFocusIdx(focusIdx + 1);
+  }
+  function check() {
+    const mask = level.blanks.map((b, i) => values[i] !== b.ans);
+    setWrongMask(mask); setChecked(true);
+    const anyWrong = mask.some(Boolean);
+    if (anyWrong) { sfx.wrong(); setWrongTries(w => w + 1); }
+    else {
+      sfx.win(); setBuilt(true);
+      const stars = C.attemptStars(wrongTries);
+      setTimeout(() => { setResult({ stars, credits: level.credits }); onComplete(level.id, stars); }, 900);
+    }
+  }
+  return html`<div class="max-w-4xl mx-auto px-4 py-5">
+    ${result ? html`<${LevelComplete} stars=${result.stars} credits=${result.credits} firstTime=${!done}
+      onNext=${() => onExit('next')} onReplay=${() => window.location.reload()} onMap=${() => onExit('map')} hasNext=${!!nextLevelId(level.id)}/>` : null}
+    <${StoryBanner} level=${level} sectionMeta=${sectionMeta}/>
+    <div class="grid md:grid-cols-5 gap-4">
+      <div class="md:col-span-3 flex flex-col items-center gap-3">
+        <div class="w-full rounded-2xl bg-slate-950 border border-white/10 p-4 relative overflow-hidden">
+          <div class="absolute -bottom-4 left-0 right-0 h-16 flex items-end justify-center gap-1 opacity-60">
+            ${Array.from({ length: 10 }).map((_, i) => html`<div key=${i} class="w-3 bg-cyan-900" style=${{ height: 10 + (i % 3) * 8 }}/>`)}
+          </div>
+          <div class="relative flex items-center justify-center gap-3 py-6">
+            <span class="text-4xl">🤖</span>
+            <div class="flex gap-1">
+              ${Array.from({ length: 5 }).map((_, i) => html`<div key=${i} class="w-8 h-3 rounded-sm ${built ? 'bg-emerald-400' : 'bg-slate-700 border border-dashed border-slate-500'} transition-colors" style=${{ transitionDelay: (i * 80) + 'ms' }}/>`)}
+            </div>
+            <span class="text-3xl">🏰</span>
+          </div>
+          <p class="text-center text-xs text-slate-400 font-nunito">${built ? 'The bridge holds! Bolt crosses safely. 🎉' : 'Glitch River — the bridge is missing planks until the code is fixed.'}</p>
+        </div>
+      </div>
+      <div class="md:col-span-2 flex flex-col gap-3">
+        <div class="rounded-2xl bg-slate-900 border border-white/10 p-4">
+          ${level.code.map((line, li) => html`<${CodeLine} key=${li} parts=${line}
+            blanks=${level.blanks} values=${values} focusIdx=${focusIdx} onFocus=${setFocusIdx}/>`)}
+        </div>
+        <div class="flex flex-wrap gap-2">
+          ${level.chips.map(chip => html`<button key=${chip} onClick=${() => pick(chip)}
+            class="px-3 py-2 rounded-xl bg-white/10 hover:bg-cyan-400 hover:text-slate-900 text-white font-mono text-sm border border-white/10 transition-colors">${chip}</button>`)}
+        </div>
+        <${BigButton} tone="green" onClick=${check}>🔧 Check bridge</${BigButton}>
+        ${checked && wrongMask.some(Boolean) ? html`<${DebugHint} text=${level.blanks[wrongMask.findIndex(Boolean)].hint} onClose=${() => setChecked(false)}/>` : null}
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ---------------- Section 3.2: boss fight ---------------- */
+function LevelPlayBoss({ level, sectionMeta, onComplete, onExit, alreadyDone }) {
+  const [phase, setPhase] = useState('scan'); // scan -> build -> fight -> done
+  const [scanIdx, setScanIdx] = useState(0);
+  const [slots, setSlots] = useState(Array(4).fill(null));
+  const [focus, setFocus] = useState(0);
+  const [bossHp, setBossHp] = useState(4);
+  const [fightIdx, setFightIdx] = useState(-1);
+  const [feedback, setFeedback] = useState(null);
+  const [wrongTries, setWrongTries] = useState(0);
+  const [result, setResult] = useState(null);
+  const sfx = React.useContext(SoundCtx);
+  const done = alreadyDone(level.id);
+  const pattern = level.pattern;
+
+  function pick(move) {
+    setSlots(s => { const ns = s.slice(); ns[focus] = move; return ns; });
+    sfx.click();
+    if (focus < 3) setFocus(focus + 1);
+  }
+  function fight() {
+    setPhase('fight'); setFightIdx(0); setBossHp(4);
+  }
+  const _timers = useRef([]);
+  function timersPush(t) { _timers.current.push(t); }
+  useEffect(() => () => _timers.current.forEach(clearTimeout), []);
+  useEffect(() => {
+    if (phase !== 'fight' || fightIdx < 0) return;
+    if (fightIdx >= pattern.length) {
+      const stars = C.attemptStars(wrongTries);
+      sfx.win();
+      setTimeout(() => { setResult({ stars, credits: level.credits }); onComplete(level.id, stars); }, 300);
+      return;
+    }
+    const atk = pattern[fightIdx];
+    const correct = level.counters[atk] === slots[fightIdx];
+    const t1 = setTimeout(() => {
+      if (correct) { sfx.correct(); setFeedback({ ok: true, atk }); setBossHp(h => h - 1); }
+      else { sfx.wrong(); setFeedback({ ok: false, atk }); setWrongTries(w => w + 1); }
+      const t2 = setTimeout(() => { setFeedback(null); setFightIdx(i => i + 1); }, 900);
+      timersPush(t2);
+    }, 700);
+    timersPush(t1);
+  }, [phase, fightIdx]);
+
+  return html`<div class="max-w-4xl mx-auto px-4 py-5">
+    ${result ? html`<${LevelComplete} stars=${result.stars} credits=${result.credits} firstTime=${!done}
+      onNext=${() => onExit('next')} onReplay=${() => window.location.reload()} onMap=${() => onExit('map')} hasNext=${!!nextLevelId(level.id)}/>` : null}
+    <${StoryBanner} level=${level} sectionMeta=${sectionMeta}/>
+
+    <div class="rounded-2xl bg-slate-950 border border-white/10 p-5 mb-4 flex flex-col items-center gap-2">
+      <div class="text-6xl transition-transform ${feedback ? (feedback.ok ? 'animate-shake-good' : 'animate-shake-bad') : ''}">🤖💥</div>
+      <div class="font-display text-white">Glitch-Bot</div>
+      <div class="flex gap-1">${Array.from({ length: 4 }).map((_, i) => html`<span key=${i} class="text-xl">${i < bossHp ? '❤️' : '🖤'}</span>`)}</div>
+      ${phase === 'fight' && fightIdx >= 0 && fightIdx < pattern.length ? html`<div class="text-center mt-1">
+        <div class="text-3xl">${level.attacks[pattern[fightIdx]].icon}</div>
+        <div class="text-slate-300 text-sm font-nunito">${level.attacks[pattern[fightIdx]].tell}</div>
+        ${feedback ? html`<div class="font-display mt-1 ${feedback.ok ? 'text-emerald-300' : 'text-red-300'}">${feedback.ok ? 'Nice counter! 💥' : 'Ouch, that wasn\u2019t it...'}</div>` : null}
+      </div>` : null}
+    </div>
+
+    ${phase === 'scan' ? html`
+      <div class="rounded-2xl bg-slate-900 border border-white/10 p-4 space-y-3">
+        <p class="text-slate-300 font-nunito text-sm">Scan mode: watch each attack in the pattern before you plan your counter-algorithm.</p>
+        <div class="flex items-center justify-center gap-3 flex-wrap">
+          ${pattern.map((atk, i) => html`<div key=${i} class="w-16 h-16 rounded-2xl grid place-items-center text-2xl border-2 ${i <= scanIdx ? 'border-cyan-300 bg-cyan-400/10' : 'border-white/10 bg-white/5 opacity-30'}">${i <= scanIdx ? level.attacks[atk].icon : '?'}</div>`)}
+        </div>
+        ${scanIdx < pattern.length ? html`<p class="text-center text-amber-200 font-nunito text-sm">${level.attacks[pattern[scanIdx]].tell}</p>` : null}
+        <div class="flex justify-center">
+          ${scanIdx < pattern.length
+            ? html`<${BigButton} tone="cyan" onClick=${() => setScanIdx(i => i + 1)}>Next attack →</${BigButton}>`
+            : html`<${BigButton} tone="green" onClick=${() => setPhase('build')}>Build my algorithm →</${BigButton}>`}
+        </div>
+      </div>` : null}
+
+    ${phase === 'build' ? html`
+      <div class="rounded-2xl bg-slate-900 border border-white/10 p-4 space-y-3">
+        <p class="text-slate-300 font-nunito text-sm">Write a 4-step counter-algorithm — one move per attack, in order. Tap a step, then tap a move.</p>
+        <div class="flex justify-center gap-2 flex-wrap">
+          ${slots.map((s, i) => html`<button key=${i} onClick=${() => setFocus(i)}
+            class="w-20 h-20 rounded-2xl border-2 flex flex-col items-center justify-center gap-1 ${focus === i ? 'border-cyan-300 bg-cyan-400/10' : 'border-white/15 bg-white/5'}">
+            <span class="text-[10px] text-slate-400 font-nunito">step ${i + 1}</span>
+            <span class="text-2xl">${s ? { jump: '🦘', duck: '🦆', shield: '🛡️', punch: '👊', dance: '💃' }[s] : '➕'}</span>
+          </button>`)}
+        </div>
+        <div class="flex flex-wrap gap-2 justify-center">
+          ${level.chips.map(chip => html`<button key=${chip} onClick=${() => pick(chip)}
+            class="px-3 py-2 rounded-xl bg-white/10 hover:bg-violet-400 hover:text-slate-900 text-white font-nunito font-bold text-sm border border-white/10">${chip}</button>`)}
+        </div>
+        <div class="flex justify-center"><${BigButton} tone="green" disabled=${slots.some(s => !s)} onClick=${fight}>⚔️ Run algorithm on Glitch-Bot</${BigButton}></div>
+      </div>` : null}
+  </div>`;
+}
+
+/* ---------------- Section 3.3: cyber quiz ---------------- */
+function LevelPlayQuiz({ level, sectionMeta, onComplete, onExit, alreadyDone }) {
+  const [qi, setQi] = useState(0);
+  const [time, setTime] = useState(level.time);
+  const [picked, setPicked] = useState(null);
+  const [reveal, setReveal] = useState(false);
+  const [score, setScore] = useState(0);
+  const [result, setResult] = useState(null);
+  const sfx = React.useContext(SoundCtx);
+  const done = alreadyDone(level.id);
+  const q = level.questions[qi];
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    if (reveal) return;
+    setTime(level.time);
+    timerRef.current = setInterval(() => {
+      setTime(t => { if (t <= 1) { clearInterval(timerRef.current); commit(null); return 0; } if (t <= 4) sfx.tick(); return t - 1; });
+    }, 1000);
+    return () => clearInterval(timerRef.current);
+  }, [qi]);
+
+  function commit(ans) {
+    clearInterval(timerRef.current);
+    setPicked(ans); setReveal(true);
+    const correct = ans === q.answer;
+    if (correct) { sfx.correct(); setScore(s => s + 1); } else sfx.wrong();
+    setTimeout(() => {
+      if (qi < level.questions.length - 1) { setQi(qi + 1); setPicked(null); setReveal(false); }
+      else {
+        const finalScore = score + (correct ? 1 : 0);
+        const stars = finalScore === 3 ? 3 : finalScore === 2 ? 2 : 1;
+        if (finalScore >= 2) { sfx.win(); setTimeout(() => { setResult({ stars, credits: level.credits, score: finalScore }); onComplete(level.id, stars); }, 200); }
+        else { setResult({ stars: 0, credits: 0, score: finalScore, fail: true }); }
+      }
+    }, 1600);
+  }
+  function retry() { setQi(0); setPicked(null); setReveal(false); setScore(0); setResult(null); }
+
+  if (result) {
+    if (result.fail) {
+      return html`<div class="max-w-md mx-auto px-4 py-16 text-center space-y-4">
+        <div class="text-6xl">🔁</div>
+        <h2 class="font-display text-2xl text-white">So close! ${result.score}/3</h2>
+        <p class="text-slate-400 font-nunito">Get at least 2 out of 3 right to pass the Cyber Quiz. Give it another go!</p>
+        <${BigButton} tone="cyan" onClick=${retry}>Try again</${BigButton}>
+        <${BigButton} tone="slate" onClick=${() => onExit('map')} className="ml-2">Back to map</${BigButton}>
+      </div>`;
+    }
+    return html`<${LevelComplete} stars=${result.stars} credits=${result.credits} firstTime=${!done}
+      onNext=${() => onExit('next')} onReplay=${retry} onMap=${() => onExit('map')} hasNext=${!!nextLevelId(level.id)}/>`;
+  }
+
+  return html`<div class="max-w-2xl mx-auto px-4 py-5">
+    <${StoryBanner} level=${level} sectionMeta=${sectionMeta}/>
+    <div class="rounded-2xl bg-slate-900 border border-white/10 p-5 space-y-4">
+      <div class="flex items-center justify-between">
+        <span class="text-xs font-nunito text-slate-400">Question ${qi + 1} / ${level.questions.length}</span>
+        <div class="flex items-center gap-1.5">
+          <div class="w-24 h-2 rounded-full bg-white/10 overflow-hidden"><div class="h-full bg-cyan-400 transition-all" style=${{ width: (time / level.time * 100) + '%' }}/></div>
+          <span class="text-xs font-mono text-cyan-300">${time}s</span>
+        </div>
+      </div>
+      <p class="font-display text-white text-lg">${q.prompt}</p>
+      ${q.visual ? html`<div class="text-2xl text-center">${q.visual}</div>` : null}
+      ${q.snippet ? html`<pre class="bg-slate-950 rounded-xl p-3 text-xs sm:text-sm text-emerald-300 font-mono overflow-x-auto">${q.snippet}</pre>` : null}
+
+      ${q.type === 'choice' ? html`<div class="grid gap-2">
+        ${q.options.map((opt, i) => html`<button key=${i} disabled=${reveal} onClick=${() => commit(i)}
+          class="text-left rounded-xl border px-3 py-2.5 font-mono text-xs sm:text-sm transition-colors whitespace-pre-wrap
+            ${reveal ? (i === q.answer ? 'border-emerald-400 bg-emerald-400/15 text-emerald-200' : i === picked ? 'border-red-400 bg-red-400/15 text-red-200' : 'border-white/10 text-slate-400') : 'border-white/15 bg-white/5 text-slate-100 hover:border-cyan-300'}">${opt}</button>`)}
+      </div>` : null}
+
+      ${q.type === 'lines' ? html`<div class="rounded-xl bg-slate-950 p-3 space-y-1">
+        ${q.lines.map((ln, i) => html`<button key=${i} disabled=${reveal} onClick=${() => commit(i)}
+          class="w-full text-left font-mono text-xs sm:text-sm px-2 py-1.5 rounded-lg transition-colors
+            ${reveal ? (i === q.answer ? 'bg-emerald-400/20 text-emerald-200' : i === picked ? 'bg-red-400/20 text-red-200' : 'text-slate-400') : 'text-slate-200 hover:bg-white/10'}">${i + 1}. ${ln}</button>`)}
+      </div>` : null}
+
+      ${reveal ? html`<div class="rounded-xl bg-cyan-400/10 border border-cyan-300/30 p-3 text-cyan-100 text-sm font-nunito">${picked === q.answer ? '✅ Correct! ' : '❌ Not quite. '}${q.explain}</div>` : null}
+    </div>
+  </div>`;
+}
+
+/* ---------------- welcome screen ---------------- */
+function Welcome({ onStart }) {
+  return html`<div class="max-w-3xl mx-auto px-4 py-10 sm:py-16 text-center">
+    <div class="text-7xl mb-4 animate-bounce-slow">🤖</div>
+    <h1 class="font-display text-4xl sm:text-5xl text-white mb-3">Cyber Explorer</h1>
+    <p class="text-slate-300 font-nunito text-lg max-w-xl mx-auto mb-2">Bolt crash-landed on a strange planet made of code. Teach Bolt to move, loop, and decide — and guide it home through three worlds.</p>
+    <p class="text-slate-500 font-nunito text-sm mb-8">Sequencing → Loops & Conditions → Real Code · Ages 7–12</p>
+    <div class="grid sm:grid-cols-3 gap-3 mb-8 text-left">
+      ${C.SECTIONS.map(s => html`<div key=${s.n} class="rounded-2xl p-4 border" style=${{ background: s.color + '1a', borderColor: s.color + '55' }}>
+        <div class="text-2xl mb-1">${s.emoji}</div>
+        <div class="font-display text-white">${s.zone}</div>
+        <div class="text-xs text-slate-400 font-nunito">${s.sub}</div>
+      </div>`)}
+    </div>
+    <${BigButton} tone="cyan" onClick=${onStart} className="text-xl px-8 py-4">🚀 Start exploring</${BigButton}>
+  </div>`;
+}
+
+/* ---------------- root App ---------------- */
+function App() {
+  const initial = useMemo(loadSave, []);
+  const [done, setDone] = useState(initial.done);
+  const [achievements, setAchievements] = useState(initial.achievements);
+  const [soundOn, setSoundOn] = useState(initial.sound);
+  const [view, setView] = useState(initial.seenIntro ? 'map' : 'welcome');
+  const [levelId, setLevelId] = useState(null);
+  const [modal, setModal] = useState(null);
+  const [toast, setToast] = useState(null);
+  const sfx = useSound(soundOn);
+  const toastQueue = useRef([]);
+
+  useEffect(() => { writeSave({ done, achievements, sound: soundOn, seenIntro: view !== 'welcome' }); }, [done, achievements, soundOn, view]);
+
+  function pushToasts(ids) {
+    ids.forEach(id => toastQueue.current.push(C.ACHS.find(a => a.id === id)));
+    advanceToast();
+  }
+  function advanceToast() {
+    if (toast) return;
+    const next = toastQueue.current.shift();
+    if (next) { setToast(next); Sound.achieve && soundOn && Sound.achieve(); setTimeout(() => { setToast(null); setTimeout(advanceToast, 350); }, 2600); }
+  }
+  useEffect(() => { advanceToast(); }, []); // eslint-disable-line
+
+  function recordCompletion(id, stars) {
+    setDone(prevDone => {
+      const prevStars = prevDone[id] ? prevDone[id].stars : 0;
+      const nd = { ...prevDone, [id]: { stars: Math.max(stars, prevStars) } };
+      setAchievements(prevAch => {
+        const newlyUnlocked = C.evalAch(nd);
+        const gained = Object.keys(newlyUnlocked).filter(k => !prevAch[k]);
+        if (gained.length) pushToasts(gained);
+        return { ...prevAch, ...newlyUnlocked };
+      });
+      return nd;
+    });
+  }
+  function alreadyDone(id) { return !!done[id]; }
+  function goMap() { setView('map'); setLevelId(null); }
+  function playLevel(id) { setLevelId(id); setView('level'); }
+  function handleExit(target) {
+    if (target === 'next') { const nid = nextLevelId(levelId); nid ? playLevel(nid) : goMap(); }
+    else goMap();
+  }
+
+  const credits = C.getCredits(done);
+  const unlockedAchCount = Object.keys(achievements).length;
+  const level = levelId ? C.LEVELS.find(l => l.id === levelId) : null;
+  const sectionMeta = level ? C.SECTIONS.find(s => s.n === level.section) : null;
+
+  return html`<${SoundCtx.Provider} value=${sfx}>
+    <div class="min-h-screen flex flex-col font-nunito" style=${{ background: 'radial-gradient(ellipse at top, #16213e 0%, #0b1120 60%)' }}>
+      ${view !== 'welcome' ? html`<${Header} credits=${credits} onMap=${goMap} onAchievements=${() => setModal('ach')}
+        soundOn=${soundOn} onSound=${() => setSoundOn(s => !s)} unlockedAchCount=${unlockedAchCount} view=${view}/>` : null}
+      <main class="flex-1">
+        ${view === 'welcome' ? html`<${Welcome} onStart=${() => setView('map')}/>` : null}
+        ${view === 'map' ? html`<${MapScreen} done=${done} onPlay=${playLevel}/>` : null}
+        ${view === 'level' && level ? (
+          level.kind === 'blocks' ? html`<${LevelPlayBlocks} key=${level.id} level=${level} sectionMeta=${sectionMeta} onComplete=${recordCompletion} onExit=${handleExit} alreadyDone=${alreadyDone}/>`
+          : level.kind === 'syntax' ? html`<${LevelPlaySyntax} key=${level.id} level=${level} sectionMeta=${sectionMeta} onComplete=${recordCompletion} onExit=${handleExit} alreadyDone=${alreadyDone}/>`
+          : level.kind === 'boss' ? html`<${LevelPlayBoss} key=${level.id} level=${level} sectionMeta=${sectionMeta} onComplete=${recordCompletion} onExit=${handleExit} alreadyDone=${alreadyDone}/>`
+          : html`<${LevelPlayQuiz} key=${level.id} level=${level} sectionMeta=${sectionMeta} onComplete=${recordCompletion} onExit=${handleExit} alreadyDone=${alreadyDone}/>`
+        ) : null}
+      </main>
+      ${view !== 'welcome' ? html`<${Footer} onOpen=${setModal}/>` : null}
+      ${modal === 'ach' ? html`<${AchievementsModal} unlocked=${achievements} onClose=${() => setModal(null)}/>` : null}
+      ${modal === 'about' ? html`<${AboutModal} onClose=${() => setModal(null)}/>` : null}
+      ${modal === 'privacy' ? html`<${PrivacyModal} onClose=${() => setModal(null)}/>` : null}
+      ${modal === 'contact' ? html`<${ContactModal} onClose=${() => setModal(null)}/>` : null}
+      <${Toast} toast=${toast}/>
+    </div>
+  </${SoundCtx.Provider}>`;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(html`<${App}/>`);
+
+</script>
+</body>
+</html>
